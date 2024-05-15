@@ -7,4 +7,4 @@ instance_class: F4
 
 # Specify the maximum number of instances
 automatic_scaling:
-  max_instances: 5
+  max_instances: 8

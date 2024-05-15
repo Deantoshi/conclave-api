@@ -437,7 +437,7 @@ def accrue_latest_embers(df):
 
     df = df.groupby(['user_address','token_address']).apply(simulate_multiplier_accrued_points)
     df = df.reset_index(drop=True)
-    
+
     df.loc[df['token_address'].isin(double_ember_token_list), 'multiplier_ember_balance'] *= 2
 
     df.loc[df['token_address'].isin(quadriple_ember_token_list), 'multiplier_ember_balance'] *= 4

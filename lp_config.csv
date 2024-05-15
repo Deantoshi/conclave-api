@@ -1,0 +1,2 @@
+rpc_url,from_block,last_block,contract_address,interval,wait_time,gateway_address,aave_oracle_address,event_csv_name,index
+wss://mode.drpc.org,3929914,7433308,0xB702cE183b4E1Faa574834715E5D4a6378D0eEd3,250,0.25,0x6387c7193B5563DD17d659b9398ACd7b03FF0080,0xE4F4F36FcBb2D53c0bAB95F5D117489579553CaA,./events/ironclad_events_5.csv,0
