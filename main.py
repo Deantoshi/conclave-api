@@ -515,6 +515,42 @@ def get_user_tvl_and_embers(user_address):
     
     return response
 
+# # makes our json response for a users total tvl and embers
+def calculate_batch_users_tvl_and_embers(df, user_address):
+
+    data = []
+    index = 0
+    response = {}
+
+    start_time = time.time()
+    print('Finished Reading Data in: ' + str(time.time() - start_time))
+
+    user_address = Web3.to_checksum_address(user_address)
+    df = df[(df['to_address'].str.contains(user_address)) | (df['from_address'].str.contains(user_address))]
+    
+    if len(df) > 0:
+        df = df.drop_duplicates(subset=['tx_hash','log_index', 'transaction_index', 'token_address', 'token_volume'], keep='last')
+        df = set_single_user_stats(df, user_address, index)
+    #if we have an address with no transactions
+    if len(df) < 1:
+        response = {
+            "user_tvl": 0,
+            "user_total_embers": 0
+        }
+    
+    else:
+        total_tvl = df['amount_cumulative'].sum()
+        total_embers = df['total_ember_balance'].median()
+        # # downrates embers a bit
+        total_embers = total_embers * 0.65
+
+        response = {
+            "user_tvl": total_tvl,
+            "user_total_embers": total_embers
+        }
+    
+    return response
+
 # # makes our nested response
 def make_nested_response(df):
 
@@ -562,6 +598,33 @@ def get_api_response():
     response = future.result()
 
     return jsonify(response), 200
+
+# # processes batches of addresses
+@app.route("/batch_users_tvl_and_embers/", methods=["POST"])
+def get_batch_users_tvl_and_embers_response():
+
+    data = request.get_json()
+
+    # Check if data is present and a list
+    if not data or not isinstance(data, list):
+        return jsonify({"error": "Invalid request format. Please provide a list of user addresses."}), 400
+    
+    else:
+        user_addresses = data
+    
+    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+
+    response_dict = {}
+    for user_address in user_addresses:
+        # Threads (optional)
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(calculate_batch_users_tvl_and_embers, df, user_address)
+            response_dict[user_address] = future.result()  # Append individual responses
+
+    reponse_dict = {
+        "data": response_dict
+    }
+    return jsonify(response_dict), 200
 
 # # will be an endpoint we can ping to try to keep our website online for quicker response times
 @app.route("/keep_online/", methods=["GET"])
