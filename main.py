@@ -32,7 +32,22 @@ def read_from_cloud_storage(filename, bucketname):
                  bucket.blob(blob_name = filename).download_as_string() 
               ) ,
                  encoding='UTF-8',
-                 sep=',')
+                 sep=',') #, dtype={'from_address': str, 'to_address': str, 'tx_hash': str, 'timestamp': str, 'token_address': str, 'reserve_address': str, 'token_volume': str, 'asset_price': str, 'usd_token_amount': str, 'log_index': int, 'transaction_index': int, 'block_number': int})
+    
+    return df
+
+@cache
+def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, dtype_dict):
+    
+    # storage_client = storage.Client(PATH)
+    bucket = STORAGE_CLIENT.get_bucket(bucketname)
+
+    df = pd.read_csv(
+    io.BytesIO(
+                 bucket.blob(blob_name = filename).download_as_string() 
+              ) ,
+                 encoding='UTF-8',
+                 sep=',', usecols=column_list, dtype=dtype_dict) #, dtype={'from_address': str, 'to_address': str, 'tx_hash': str, 'timestamp': str, 'token_address': str, 'reserve_address': str, 'token_volume': str, 'asset_price': str, 'usd_token_amount': str, 'log_index': int, 'transaction_index': int, 'block_number': int})
     
     return df
 
@@ -321,6 +336,7 @@ def set_single_user_stats(df, user_address, index):
             decimals = get_token_config_value('decimals', reserve_address, index)
 
             temp_df = df.loc[df['token_address'] == token_address]
+            # temp_df['amount_cumulative'] = temp_df['amount_cumulative'].astype(float)
 
             if len(temp_df) > 0:
                 print(temp_df)
@@ -583,6 +599,55 @@ def make_nested_response(df):
     
     return response
 
+# #  gets all transactions for a specified user_address
+def get_users_transactions(user_address):
+    
+    data = []
+
+    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    
+    df = df[(df['from_address'] == user_address) | (df['to_address'] == user_address)]
+
+
+    if len(df) < 1:
+        return {"error": "The address is not valid or does not exist in the database."}, 400
+    
+    else:
+        from_address = df['from_address']
+        to_address = df['to_address']
+        tx_hash = df['tx_hash']
+        timestamp = df['timestamp']
+        token_address = df['token_address']
+        reserve_address = df['reserve_address']
+        token_volume = df['token_volume']
+        asset_price = df['asset_price']
+        usd_token_amount = df['usd_token_amount']
+        block_number = df['block_number']
+        
+        for i in range(df.shape[0]):
+            row = df.iloc[i]
+            data.append({
+                "from_address": str(row['from_address']),
+                "to_address": str(row['to_address']),
+                "tx_hash": str(row['tx_hash']),
+                "timestamp": str(row['timestamp']),
+                "token_address": str(row['token_address']),
+                "reserve_address": str(row['reserve_address']),
+                "token_volume": str(row['token_volume']),
+                "asset_price": str(row['asset_price']),
+                "usd_token_amount": str(row['usd_token_amount']),
+                "block_number": str(row['block_number']),
+            })
+
+    # Create JSON response
+    response = {
+        "data": {
+            "result": data
+        }
+    }
+
+
+    return response
 
 @app.route("/user_tvl_and_embers/", methods=["POST"])
 def get_api_response():
@@ -656,7 +721,34 @@ def get_all_users():
 
     return jsonify(response), 200
 
-if __name__ =='__main__':
-    app.run()
+@app.route("/get_user_transactions/", methods=["POST"])
+def get_them_transactions():
 
+    data = json.loads(request.data)
+
+    user_address = data['user_address']  # Assuming data is in form format
+
+    # Threads
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(get_users_transactions, user_address)
+    
+    response = future.result()
+
+    return jsonify(response), 200
+
+# if __name__ =='__main__':
+#     app.run()
+
+file_name = 'current_user_tvl_embers.csv'
+bucket_name = 'cooldowns2'
+
+column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'asset_price'])
+dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'asset_price': float}
+
+df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_list, dtype_dict)
+print(df)
+# user_address = '0x4Db8912dd13d79a030752b3D4A04c5b466BC1827'
+# df = get_users_transactions(user_address)
+
+# print(df)
 # lp_tracker.find_all_lp_transactions(0)
