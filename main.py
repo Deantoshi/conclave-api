@@ -51,6 +51,56 @@ def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, 
     
     return df
 
+# # takes in a wallet_address and a block number
+# # returns that user's balance at that blocknumber
+def get_user_eth_wrseth_at_block_number(df, block_number):
+
+    block_number = float(block_number)
+    # # makes our dataframe only contain ETH deposit tokens and wrsETH deposit tokens
+    eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
+    wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+
+    deposit_receipt_list = [eth_deposit_receipt_address, wrseth_deposit_receipt_address]
+
+    df['block_number'] = df['block_number'].astype(float)
+    
+    df = df.loc[df['block_number'] <= block_number]
+
+    df = df.loc[df['token_address'].isin(deposit_receipt_list)]
+    
+    # # makes our additions and subtraction flows and drops blacklisted addresses
+    index = 0
+
+    df['token_volume'] = df['token_volume'].astype(float)
+    df['timestamp'] = df['timestamp'].astype(float)
+    df = df.sort_values(by='timestamp', ascending=True)
+
+    df = set_token_flows_no_database(df, index)
+
+    df = drop_blacklisted_addresses(df)
+
+    df = df.drop_duplicates(subset=['user_address', 'token_address', 'tx_hash', 'token_volume', 'timestamp'])
+
+    # # if our dataframe is > 0 length, we'll make our balance
+    if len(df) > 0:
+            start_time = time.time()
+            
+            df = set_rolling_balance(df)
+            print('set_rolling_balances complete: ' + str(time.time() - start_time))
+
+    print(df)
+    # df = df.groupby(['user_address', 'token_address'])['block_number'].max().reset_index()
+    df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
+    
+    df.loc[df['token_address'] == eth_deposit_receipt_address, 'supplied_token'] = 'WETH'
+    df.loc[df['token_address'] == wrseth_deposit_receipt_address, 'supplied_token'] = 'wrsETH'
+
+    df['human_readable']  = df['amount_cumulative'] / 1e18
+
+
+    return df
+
+
 # # returns our dataframe with only unique addresses
 def set_unique_users_no_database(df):
 
@@ -137,7 +187,7 @@ def set_token_flows_no_database(event_df, index):
     repay_df['user_address'] = repay_df['from_address']
 
     combo_df = pd.concat([deposit_df, borrow_df, withdraw_df, repay_df])
-    combo_df = combo_df[['user_address', 'tx_hash', 'token_address','token_volume', 'timestamp', 'asset_price']]
+    combo_df = combo_df[['user_address', 'tx_hash', 'token_address','token_volume', 'timestamp', 'block_number', 'asset_price']]
 
     # make_user_data_csv(combo_df, token_flow_csv)
 
@@ -149,8 +199,8 @@ def set_token_flows_no_database(event_df, index):
 # # gets rid of our blacklisted addresses in our dataframe
 def drop_blacklisted_addresses(df):
     
-    df.loc[df['user_address'] == '0xd93E25A8B1D645b15f8c736E1419b4819Ff9e6EF', 'user_address'] = '0x5bC7b531B1a8810c74E53C4b81ceF4F8f911921F'
-    # df = df.loc[df['user_address'] != '0xd93E25A8B1D645b15f8c736E1419b4819Ff9e6EF']
+    # df.loc[df['user_address'] == '0xd93E25A8B1D645b15f8c736E1419b4819Ff9e6EF', 'user_address'] = '0x5bC7b531B1a8810c74E53C4b81ceF4F8f911921F'
+    df = df.loc[df['user_address'] != '0xd93E25A8B1D645b15f8c736E1419b4819Ff9e6EF']
     df = df.loc[df['user_address'] != '0x6387c7193B5563DD17d659b9398ACd7b03FF0080']
     df = df.loc[df['user_address'] != '0x0000000000000000000000000000000000000000']
     df = df.loc[df['user_address'] != '0x2dDD3BCA2Fa050532B8d7Fd41fB1449382187dAA']
@@ -741,12 +791,17 @@ def get_them_transactions():
 
 file_name = 'current_user_tvl_embers.csv'
 bucket_name = 'cooldowns2'
+block_number = 9272330
 
-column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'asset_price'])
-dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'asset_price': float}
+column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
+dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
 
 df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_list, dtype_dict)
+
+df = get_user_eth_wrseth_at_block_number(df, block_number)
+
 print(df)
+
 # user_address = '0x4Db8912dd13d79a030752b3D4A04c5b466BC1827'
 # df = get_users_transactions(user_address)
 
