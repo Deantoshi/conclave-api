@@ -51,6 +51,27 @@ def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, 
     
     return df
 
+# # tries to forward fill the last known block numbers
+def forward_fill_df(df, block_number):
+    block_number = int(block_number)
+
+    # Sort by user_address, token_address, and block_number
+    df = df.sort_values(by=['user_address', 'token_address', 'block_number'])
+
+    print(df)
+    time.sleep(20)
+    
+    # Create a range index spanning from minimum to specified block_number
+    index = pd.RangeIndex(start=df['block_number'].min(), stop=block_number + 1)
+
+    # Outer join with missing values (NaNs)
+    df = df.set_index(['user_address', 'token_address', 'block_number']).join(index.to_frame().set_index(['user_address', 'token_address', 'block_number']), how='outer')
+
+    # Forward fill amount_cumulative and update original DataFrame
+    df['amount_cumulative'] = df['amount_cumulative'].fillna(method='ffill')
+
+    return df
+
 # # takes in a wallet_address and a block number
 # # returns that user's balance at that blocknumber
 def get_user_eth_wrseth_at_block_number(df, block_number):
@@ -81,6 +102,9 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
 
     df = df.drop_duplicates(subset=['user_address', 'token_address', 'tx_hash', 'token_volume', 'timestamp'])
 
+    #temporarily makes our dataframe only track one address
+    df = df.loc[df['user_address'] == '0x08f17c1dCc5D0eE22690563A3d4bbcE4a2b9EA80']
+
     # # if our dataframe is > 0 length, we'll make our balance
     if len(df) > 0:
             start_time = time.time()
@@ -88,15 +112,15 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
             df = set_rolling_balance(df)
             print('set_rolling_balances complete: ' + str(time.time() - start_time))
 
-    print(df)
     # df = df.groupby(['user_address', 'token_address'])['block_number'].max().reset_index()
     df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
     
+    df = forward_fill_df(df, block_number)
+
     df.loc[df['token_address'] == eth_deposit_receipt_address, 'supplied_token'] = 'WETH'
     df.loc[df['token_address'] == wrseth_deposit_receipt_address, 'supplied_token'] = 'wrsETH'
 
     df['human_readable']  = df['amount_cumulative'] / 1e18
-
 
     return df
 
@@ -791,7 +815,7 @@ def get_them_transactions():
 
 file_name = 'current_user_tvl_embers.csv'
 bucket_name = 'cooldowns2'
-block_number = 9272330
+block_number = 4272330
 
 column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
 dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
