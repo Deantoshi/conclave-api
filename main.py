@@ -36,7 +36,7 @@ def read_from_cloud_storage(filename, bucketname):
     
     return df
 
-@cache
+# @cache
 def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, dtype_dict):
     
     # storage_client = storage.Client(PATH)
