@@ -51,15 +51,54 @@ def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, 
     
     return df
 
+# # will make a dataframe that exists on the first block of Ironclad's deployment to serve as a placeholder to forward fill from
+def make_placeholder_starter_df(df, min_block_number):
+
+    # user_address, tx_hash, token_address, token_volume, timestamp, block_number, asset_price, amount_cumulative
+    user_address = df['user_address'].tolist()
+    user_address = user_address[0]
+
+    token_address = df['token_address'].tolist()
+    token_address = token_address[0]
+
+    temp_df = pd.DataFrame()
+
+    eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
+    wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+    deposit_receipt_list = [token_address]
+
+    filler_text_list = ['N/A']
+    filler_number_list = [0]
+
+    temp_df['user_address'] = [user_address]
+    temp_df['tx_hash'] = filler_text_list
+    temp_df['token_address'] = deposit_receipt_list
+    temp_df['token_volume'] = filler_number_list
+    temp_df['timestamp'] = filler_number_list
+    temp_df['block_number'] = [min_block_number]
+    temp_df['asset_price'] = filler_number_list
+    temp_df['amount_cumulative'] = filler_number_list
+
+    df_list = [df, temp_df]
+
+    df = pd.concat(df_list)
+
+    return df
+
 # # tries to forward fill the last known block numbers
 def forward_fill_df(df, block_number):
     
     df['block_number'] = df['block_number'].astype(int)
     block_number = int(block_number)
     # 1. Get minimum and maximum block numbers (assuming data exists for 10 and 15)
-    min_block_number = df['block_number'].min()
-    min_block_number = int(min_block_number)
+    # min_block_number = df['block_number'].min()
+    # min_block_number = int(min_block_number)
+    min_block_number = 3929914
     max_block_number = block_number
+
+    # user_address, tx_hash, token_address, token_volume, timestamp, block_number, asset_price, amount_cumulative
+
+    df = make_placeholder_starter_df(df, min_block_number)
 
     # 2. Create a range index for missing block numbers (10 to 1000)
     missing_block_range = pd.RangeIndex(start=min_block_number + 1, stop=block_number)  # 1001 to be inclusive of 1000
@@ -131,7 +170,13 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
     # df = df.groupby(['user_address', 'token_address'])['block_number'].max().reset_index()
     # df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
     
-    df = forward_fill_df(df, block_number)
+    df_list = []
+    for token in deposit_receipt_list:
+        temp_df = df.loc[df['token_address'] == token]
+        temp_df = forward_fill_df(temp_df, block_number)
+        df_list.append(temp_df)
+
+    df = pd.concat(df_list)
 
     df.loc[df['token_address'] == eth_deposit_receipt_address, 'supplied_token'] = 'WETH'
     df.loc[df['token_address'] == wrseth_deposit_receipt_address, 'supplied_token'] = 'wrsETH'
@@ -839,6 +884,8 @@ def get_them_transactions():
 file_name = 'current_user_tvl_embers.csv'
 bucket_name = 'cooldowns2'
 block_number = 7272330
+eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
+wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
 
 column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
 dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
@@ -847,4 +894,4 @@ df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_lis
 
 df = get_user_eth_wrseth_at_block_number(df, block_number)
 
-print(df.loc[df['token_address'] == '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440']['block_number'].max())
+print(df.loc[df['token_address'] == eth_deposit_receipt_address])
