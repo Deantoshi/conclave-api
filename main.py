@@ -61,8 +61,6 @@ def forward_fill_df(df, block_number):
     min_block_number = int(min_block_number)
     max_block_number = block_number
 
-    print(df)
-
     # 2. Create a range index for missing block numbers (10 to 1000)
     missing_block_range = pd.RangeIndex(start=min_block_number + 1, stop=block_number)  # 1001 to be inclusive of 1000
 
@@ -97,6 +95,7 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
     # # makes our dataframe only contain ETH deposit tokens and wrsETH deposit tokens
     eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
     wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+    # ezeth_deposit_receipt_address = '0x272CfCceFbEFBe1518cd87002A8F9dfd8845A6c4'
 
     deposit_receipt_list = [eth_deposit_receipt_address, wrseth_deposit_receipt_address]
 
@@ -130,7 +129,7 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
             print('set_rolling_balances complete: ' + str(time.time() - start_time))
 
     # df = df.groupby(['user_address', 'token_address'])['block_number'].max().reset_index()
-    df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
+    # df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
     
     df = forward_fill_df(df, block_number)
 
@@ -138,6 +137,9 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
     df.loc[df['token_address'] == wrseth_deposit_receipt_address, 'supplied_token'] = 'wrsETH'
 
     df['human_readable']  = df['amount_cumulative'] / 1e18
+
+    df.loc[df['amount_cumulative'] < 0, 'amount_cumulative'] = 0
+    df.loc[df['human_readable'] < 0, 'human_readable'] = 0
 
     return df
 
@@ -658,6 +660,10 @@ def calculate_batch_users_tvl_and_embers(df, user_address):
     
     return response
 
+def make_kelp_dao_response(df):
+
+    return
+
 # # makes our nested response
 def make_nested_response(df):
 
@@ -832,7 +838,7 @@ def get_them_transactions():
 
 file_name = 'current_user_tvl_embers.csv'
 bucket_name = 'cooldowns2'
-block_number = 8272330
+block_number = 7272330
 
 column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
 dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
@@ -841,4 +847,4 @@ df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_lis
 
 df = get_user_eth_wrseth_at_block_number(df, block_number)
 
-print(df)
+print(df.loc[df['token_address'] == '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440']['block_number'].max())
