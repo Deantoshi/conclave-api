@@ -53,22 +53,39 @@ def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, 
 
 # # tries to forward fill the last known block numbers
 def forward_fill_df(df, block_number):
+    
+    df['block_number'] = df['block_number'].astype(int)
     block_number = int(block_number)
-
-    # Sort by user_address, token_address, and block_number
-    df = df.sort_values(by=['user_address', 'token_address', 'block_number'])
+    # 1. Get minimum and maximum block numbers (assuming data exists for 10 and 15)
+    min_block_number = df['block_number'].min()
+    min_block_number = int(min_block_number)
+    max_block_number = block_number
 
     print(df)
-    time.sleep(20)
-    
-    # Create a range index spanning from minimum to specified block_number
-    index = pd.RangeIndex(start=df['block_number'].min(), stop=block_number + 1)
 
-    # Outer join with missing values (NaNs)
-    df = df.set_index(['user_address', 'token_address', 'block_number']).join(index.to_frame().set_index(['user_address', 'token_address', 'block_number']), how='outer')
+    # 2. Create a range index for missing block numbers (10 to 1000)
+    missing_block_range = pd.RangeIndex(start=min_block_number + 1, stop=block_number)  # 1001 to be inclusive of 1000
 
-    # Forward fill amount_cumulative and update original DataFrame
-    df['amount_cumulative'] = df['amount_cumulative'].fillna(method='ffill')
+    # 3. Filter existing data (block_number 10 and 15)
+    existing_data = df
+
+    # 4. Create DataFrame for missing blocks with placeholder values (adjust as needed)
+    missing_data = pd.DataFrame({
+        'user_address': [None] * len(missing_block_range),  # Replace with placeholder if needed
+        'token_address': [None] * len(missing_block_range),   # Replace with placeholder if needed
+        'amount_cumulative': [None] * len(missing_block_range),  # Replace with placeholder if needed (e.g., 0)
+        'block_number': missing_block_range
+    })
+
+    # 5. Concatenate existing and missing data (preserves order)
+    df = pd.concat([existing_data, missing_data], ignore_index=True)
+
+    # 6. Sort by block_number (optional, but recommended for clarity)
+    df = df.sort_values(by='block_number')
+
+    df = df.ffill()
+
+    # Now 'df' has data for block_number 10 to 1000 (with placeholders for missing values)
 
     return df
 
@@ -103,7 +120,7 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
     df = df.drop_duplicates(subset=['user_address', 'token_address', 'tx_hash', 'token_volume', 'timestamp'])
 
     #temporarily makes our dataframe only track one address
-    df = df.loc[df['user_address'] == '0x08f17c1dCc5D0eE22690563A3d4bbcE4a2b9EA80']
+    df = df.loc[df['user_address'] == '0x515F4055395db22C06DA6FbDD7Cac92A08a01EEa']
 
     # # if our dataframe is > 0 length, we'll make our balance
     if len(df) > 0:
@@ -815,7 +832,7 @@ def get_them_transactions():
 
 file_name = 'current_user_tvl_embers.csv'
 bucket_name = 'cooldowns2'
-block_number = 4272330
+block_number = 8272330
 
 column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
 dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
@@ -825,9 +842,3 @@ df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_lis
 df = get_user_eth_wrseth_at_block_number(df, block_number)
 
 print(df)
-
-# user_address = '0x4Db8912dd13d79a030752b3D4A04c5b466BC1827'
-# df = get_users_transactions(user_address)
-
-# print(df)
-# lp_tracker.find_all_lp_transactions(0)
