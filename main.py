@@ -85,6 +85,30 @@ def make_placeholder_starter_df(df, min_block_number):
 
     return df
 
+# # takes in our regular dataframe with transaction level data and our blank dataframe with block_numbers
+# # replaces data in the large block_number data with our info from the regular dataframe
+def quick_edit_values(df, block_number_df):
+
+    user_address = df['user_address'].iloc[0]
+    token_address = df['token_address'].iloc[0]
+
+    amount_cumulative_list = df['amount_cumulative'].tolist()
+    block_number_list = df['block_number'].tolist()
+
+    i = 0
+    while i < len(block_number_list):
+        block_number = block_number_list[i]
+        amount_cumulative = amount_cumulative_list[i]
+
+        block_number_df.loc[block_number_df['block_number'] == block_number, 'amount_cumulative'] = amount_cumulative
+
+        i += 1
+
+    block_number_df['user_address'] = user_address
+    block_number_df['token_address'] = token_address
+
+    return block_number_df
+
 # # tries to forward fill the last known block numbers
 def forward_fill_df(df, block_number):
     
@@ -98,30 +122,47 @@ def forward_fill_df(df, block_number):
 
     # user_address, tx_hash, token_address, token_volume, timestamp, block_number, asset_price, amount_cumulative
 
+    start_time = time.time()
     df = make_placeholder_starter_df(df, min_block_number)
+    new_time = time.time()
+    print('Finished making placeholder in: ', str(new_time - start_time))
+
 
     # 2. Create a range index for missing block numbers (10 to 1000)
+    start_time = time.time()
     missing_block_range = pd.RangeIndex(start=min_block_number + 1, stop=block_number)  # 1001 to be inclusive of 1000
-
+    new_time = time.time()
+    print('Finished making block_range in: ', str(new_time - start_time))
     # 3. Filter existing data (block_number 10 and 15)
     existing_data = df
 
     # 4. Create DataFrame for missing blocks with placeholder values (adjust as needed)
+    start_time = time.time()
     missing_data = pd.DataFrame({
         'user_address': [None] * len(missing_block_range),  # Replace with placeholder if needed
         'token_address': [None] * len(missing_block_range),   # Replace with placeholder if needed
         'amount_cumulative': [None] * len(missing_block_range),  # Replace with placeholder if needed (e.g., 0)
         'block_number': missing_block_range
     })
+    new_time = time.time()
+    print('Finished making missing_data_df in: ', str(new_time - start_time))
 
     # 5. Concatenate existing and missing data (preserves order)
-    df = pd.concat([existing_data, missing_data], ignore_index=True)
+    start_time = time.time()
+    # df = pd.concat([existing_data, missing_data], ignore_index=True)
+    df = quick_edit_values(df, missing_data)
+    new_time = time.time()
+    print('Finished combining dataframes in: ', str(new_time - start_time))
 
     # 6. Sort by block_number (optional, but recommended for clarity)
     df = df.sort_values(by='block_number')
 
+    # # reduces the scope of our dataframe for better performance
+    df = df[['user_address', 'token_address', 'amount_cumulative', 'block_number']]
+    
     df = df.ffill()
 
+    df = df.fillna(0)
     # Now 'df' has data for block_number 10 to 1000 (with placeholders for missing values)
 
     return df
@@ -165,7 +206,7 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
             start_time = time.time()
             
             df = set_rolling_balance(df)
-            print('set_rolling_balances complete: ' + str(time.time() - start_time))
+            # print('set_rolling_balances complete: ' + str(time.time() - start_time))
 
     # df = df.groupby(['user_address', 'token_address'])['block_number'].max().reset_index()
     # df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
@@ -890,8 +931,13 @@ wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
 column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
 dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
 
+start_time = time.time()
 df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_list, dtype_dict)
+new_time = time.time()
+print('Finished Reading in: ', str(new_time - start_time))
 
+start_time = time.time()
 df = get_user_eth_wrseth_at_block_number(df, block_number)
-
+new_time = time.time()
+print('Finished Making Blocks in: ', str(new_time - start_time))
 print(df.loc[df['token_address'] == eth_deposit_receipt_address])
