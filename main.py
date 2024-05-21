@@ -746,9 +746,51 @@ def calculate_batch_users_tvl_and_embers(df, user_address):
     
     return response
 
+# # makes our kelp_dao response of wrsETH and ETH supply each block
 def make_kelp_dao_response(df):
 
-    return
+    # # makes temporary dataframes that only has tokens from respective tokens
+    temp_df_1 = df.loc[df['supplied_token'] == 'wrsETH']
+    temp_df_2 = df.loc[df['supplied_token'] == 'WETH']
+    
+    # # makes new columns for a third temp_df for wrseth_supplied and weth_supplied
+    temp_df_3 = temp_df_1[['user_address', 'block_number']]
+    temp_df_3['wrseth_supplied'] = temp_df_1['amount_cumulative']
+    temp_df_3['weth_supplied'] = temp_df_2['amount_cumulative']
+
+    # # reassigns df to the new token df
+    df = temp_df_3
+
+    data = []
+
+    #if we have an address with no transactions
+    if len(df) < 1:
+        temp_df = pd.DataFrame()
+        data.append({
+           "wallet_address": 'N/A',
+           "wrsETH_supplied": 0,
+           "weth_supplied": 0
+        })
+
+    else:
+        # wallet_addresses = ", ".join(df["to_address"].tolist())
+        # data.append({"wallet_address": wallet_addresses})
+        temp_df = df[['to_address']]
+        # Process data
+        for i in range(temp_df.shape[0]):
+            row = temp_df.iloc[i]
+            data.append({
+                "wallet_address": str(row['to_address']),
+            })
+
+    # Create JSON response
+    response = {
+        "data": {
+            "result": data
+        }
+    }
+
+    return response
 
 # # makes our nested response
 def make_nested_response(df):
