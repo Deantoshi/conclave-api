@@ -54,7 +54,6 @@ def read_from_cloud_storage_specific_columns(filename, bucketname, column_list, 
 # # will make a dataframe that exists on the first block of Ironclad's deployment to serve as a placeholder to forward fill from
 def make_placeholder_starter_df(df, min_block_number):
 
-    # user_address, tx_hash, token_address, token_volume, timestamp, block_number, asset_price, amount_cumulative
     user_address = df['user_address'].tolist()
     user_address = user_address[0]
 
@@ -110,27 +109,27 @@ def quick_edit_values(df, block_number_df):
     return block_number_df
 
 # # tries to forward fill the last known block numbers
-def forward_fill_df(df, block_number):
+def forward_fill_df(df, minimum_block, maximum_block):
     
     df['block_number'] = df['block_number'].astype(int)
-    block_number = int(block_number)
+    # block_number = int(block_number)
     # 1. Get minimum and maximum block numbers (assuming data exists for 10 and 15)
-    # min_block_number = df['block_number'].min()
-    # min_block_number = int(min_block_number)
-    min_block_number = 3929914
-    max_block_number = block_number
+    min_block_number = df['block_number'].min()
+    min_block_number = int(min_block_number)
+
+    absolute_min_block_number = 3929720
 
     # user_address, tx_hash, token_address, token_volume, timestamp, block_number, asset_price, amount_cumulative
 
     start_time = time.time()
-    df = make_placeholder_starter_df(df, min_block_number)
+    df = make_placeholder_starter_df(df, absolute_min_block_number)
     new_time = time.time()
     print('Finished making placeholder in: ', str(new_time - start_time))
 
 
     # 2. Create a range index for missing block numbers (10 to 1000)
     start_time = time.time()
-    missing_block_range = pd.RangeIndex(start=min_block_number + 1, stop=block_number)  # 1001 to be inclusive of 1000
+    missing_block_range = pd.RangeIndex(start=absolute_min_block_number, stop=maximum_block + 1)  # 1001 to be inclusive of 1000
     new_time = time.time()
     print('Finished making block_range in: ', str(new_time - start_time))
     # 3. Filter existing data (block_number 10 and 15)
@@ -156,35 +155,91 @@ def forward_fill_df(df, block_number):
 
     # 6. Sort by block_number (optional, but recommended for clarity)
     df = df.sort_values(by='block_number')
-
+    
     # # reduces the scope of our dataframe for better performance
     df = df[['user_address', 'token_address', 'amount_cumulative', 'block_number']]
     
+    start_time = time.time()
     df = df.ffill()
+    new_time = time.time()
+    print('finished filling info in: ', str(new_time - start_time))
 
     df = df.fillna(0)
+    
+    # # will set our dataframe back to the specified block range
+    df = df.loc[df['block_number'] >= minimum_block]
+    df = df.loc[df['block_number'] <= maximum_block]
+
     # Now 'df' has data for block_number 10 to 1000 (with placeholders for missing values)
 
     return df
 
+# # will make sure our min block is atleat the block we deployed at
+def min_block_sanitizer(minimum_block):
+
+    absolute_minimum_block = 3929720
+
+    try:
+        minimum_block = int(minimum_block)
+    except:
+        minimum_block = absolute_minimum_block
+    
+    if minimum_block < absolute_minimum_block:
+        minimum_block = absolute_minimum_block
+
+    return minimum_block
+
+# # will make sure that our max block is the most recent block we have in out data set
+def max_block_sanitizer(df, maximum_block):
+    
+    absolute_maximum_block = df['block_number'].max()
+    absolute_maximum_block = int(absolute_maximum_block)
+
+    try:
+        maximum_block = int(maximum_block)
+    except:
+        maximum_block = absolute_maximum_block
+    
+    if maximum_block > absolute_maximum_block:
+        maximum_block = absolute_maximum_block
+    
+    return maximum_block
+
+
 # # takes in a wallet_address and a block number
 # # returns that user's balance at that blocknumber
-def get_user_eth_wrseth_at_block_number(df, block_number):
+def get_user_eth_wrseth_at_block_number(df, wallet_address, minimum_block, maximum_block):
+    absolute_minimum_block = 3929720
+    absolute_max_block = df['block_number'].max()
 
-    block_number = float(block_number)
+    # # makes sure our block inputs are as valid as possible
+    minimum_block = min_block_sanitizer(minimum_block)
+    maximum_block = max_block_sanitizer(df, maximum_block)
+
+    # # incase the inputs are scuffed, we fix them here
+    if minimum_block > maximum_block:
+        minimum_block = absolute_minimum_block
+
+    if maximum_block < minimum_block:
+        maximum_block = absolute_max_block
+
     # # makes our dataframe only contain ETH deposit tokens and wrsETH deposit tokens
     eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
     wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
-    # ezeth_deposit_receipt_address = '0x272CfCceFbEFBe1518cd87002A8F9dfd8845A6c4'
 
     deposit_receipt_list = [eth_deposit_receipt_address, wrseth_deposit_receipt_address]
 
     df['block_number'] = df['block_number'].astype(float)
     
-    df = df.loc[df['block_number'] <= block_number]
+    # df = df.loc[df['block_number'] <= maximum_block]
 
     df = df.loc[df['token_address'].isin(deposit_receipt_list)]
     
+    # # will just short circuit the function if the user doesn't have a wrsETH or ETH balance on Ironclad
+    df_wallet_checker = df.loc[df['to_address'] == wallet_address]
+    if len(df_wallet_checker) < 1:
+        return 'User does not have a history of wrsETH or ETH on Ironclad. To find a list of potential suppliers, please try the: /get_all_wrseth_eth_suppliers GET endpoint.'
+
     # # makes our additions and subtraction flows and drops blacklisted addresses
     index = 0
 
@@ -193,29 +248,26 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
     df = df.sort_values(by='timestamp', ascending=True)
 
     df = set_token_flows_no_database(df, index)
+    
+    # # sets our dataframe to only contain values for our wallet
+    df = df.loc[df['user_address'] == wallet_address]
 
     df = drop_blacklisted_addresses(df)
 
     df = df.drop_duplicates(subset=['user_address', 'token_address', 'tx_hash', 'token_volume', 'timestamp'])
-
-    #temporarily makes our dataframe only track one address
-    df = df.loc[df['user_address'] == '0x515F4055395db22C06DA6FbDD7Cac92A08a01EEa']
 
     # # if our dataframe is > 0 length, we'll make our balance
     if len(df) > 0:
             start_time = time.time()
             
             df = set_rolling_balance(df)
-            # print('set_rolling_balances complete: ' + str(time.time() - start_time))
 
-    # df = df.groupby(['user_address', 'token_address'])['block_number'].max().reset_index()
-    # df = (df.groupby(['user_address', 'token_address']).agg({'block_number': 'max', 'amount_cumulative': 'first'}).reset_index())
-    
     df_list = []
     for token in deposit_receipt_list:
         temp_df = df.loc[df['token_address'] == token]
-        temp_df = forward_fill_df(temp_df, block_number)
-        df_list.append(temp_df)
+        if len(temp_df) > 0:
+            temp_df = forward_fill_df(temp_df, minimum_block, maximum_block)
+            df_list.append(temp_df)
 
     df = pd.concat(df_list)
 
@@ -228,7 +280,7 @@ def get_user_eth_wrseth_at_block_number(df, block_number):
     # df.loc[df['human_readable'] < 0, 'human_readable'] = 0
 
     response = make_kelp_dao_response(df)
-
+    
     return response
 
 
@@ -770,8 +822,6 @@ def make_kelp_dao_response(df):
 
     # # reassigns df to the new token df
     df = temp_df_3
-
-    df = df[:5]
     
     wallet_address = df['user_address'].tolist()[0]
 
@@ -786,28 +836,6 @@ def make_kelp_dao_response(df):
     df_dict[wallet_address] = data_dict
 
     data = []
-
-    # #if we have an address with no transactions
-    # if len(df) < 1:
-    #     temp_df = pd.DataFrame()
-    #     data.append({
-    #        "wallet_address": 'N/A',
-    #        "wrsETH_supplied": 0,
-    #        "weth_supplied": 0
-    #     })
-
-    # else:
-    #     # wallet_addresses = ", ".join(df["to_address"].tolist())
-    #     # data.append({"wallet_address": wallet_addresses})
-    #     temp_df = df
-    #     # Process data
-    #     for i in range(temp_df.shape[0]):
-    #         row = temp_df.iloc[i]
-    #         data.append({
-    #             "wallet_address": str(row['user_address']),
-    #             "wrseth_supplied": str(row['wrseth_supplied']),
-    #             "weth_supplied": str(row['wrseth_supplied'])
-    #         })
 
     # Create JSON response
     response = data
@@ -983,26 +1011,82 @@ def get_them_transactions():
 
     return jsonify(response), 200
 
-# if __name__ =='__main__':
-#     app.run()
+@app.route("/get_wallet_wrseth_eth_supply/", methods=["POST"])
+def get_wrseth_eth_api_response():
 
-file_name = 'current_user_tvl_embers.csv'
-bucket_name = 'cooldowns2'
-block_number = 7272330
-eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
-wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
 
-column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
-dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
+    data = json.loads(request.data)
 
-start_time = time.time()
-df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_list, dtype_dict)
-new_time = time.time()
-print('Finished Reading in: ', str(new_time - start_time))
+    wallet_address = data['wallet_address']  # Assuming data is in form format
+    minimum_block = data['minimum_block']
+    maximum_block = data['maximum_block']
 
-start_time = time.time()
-df = get_user_eth_wrseth_at_block_number(df, block_number)
-new_time = time.time()
-print('Finished Making Blocks in: ', str(new_time - start_time))
-print(df)
+    eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
+    wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+    receipt_list = [eth_deposit_receipt_address, wrseth_deposit_receipt_address]
+
+    temp_df_checker = df.loc[df['to_address'] == wallet_address]
+    temp_df_checker = df.loc[df['token_address'].isin(receipt_list)]
+
+    if len(temp_df_checker) < 1:
+        response = 'User does not have a history of supplying wrsETH nor WETH on Ironclad. To find a list of potential suppliers, please try the: /get_all_wrseth_eth_suppliers GET endpoint.'
+        return jsonify(response), 200
+
+    # Threads
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(get_user_eth_wrseth_at_block_number, df, wallet_address, minimum_block, maximum_block)
+    
+    response = future.result()
+
+    return jsonify(response), 200
+
+# # will be an endpoint we can ping to try to keep our website online for quicker response times
+@app.route("/get_all_wrseth_eth_suppliers/", methods=["GET"])
+def get_all_kelp_dao_users():
+
+    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = set_unique_users_no_database(df)
+
+    eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
+    wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+    receipt_list = [eth_deposit_receipt_address, wrseth_deposit_receipt_address]
+    df = df.loc[df['token_address'].isin(receipt_list)]
+
+    df = df[['to_address']]
+
+    # Threads
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(make_nested_response, df)
+    
+    response = future.result()
+
+    return jsonify(response), 200
+
+
+if __name__ =='__main__':
+    app.run()
+
+# file_name = 'current_user_tvl_embers.csv'
+# bucket_name = 'cooldowns2'
+# minimum_block_number = 1
+# maximum_block_number = 2
+# wallet_address = '0x515F4055395db22C06DA6FbDD7Cac92A08a01EEa'
+
+# eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
+# wrseth_deposit_receipt_address = '0xe3f709397e87032E61f4248f53Ee5c9a9aBb6440'
+
+# column_list = tuple(['from_address', 'to_address', 'tx_hash', 'token_address', 'token_volume', 'timestamp', 'block_number', 'asset_price'])
+# dtype_dict = {'from_address': str, 'to_address': str, 'tx_hash':str, 'token_address':str, 'token_volume': float, 'timestamp': float, 'block_number': float,'asset_price': float}
+
+# start_time = time.time()
+# df = read_from_cloud_storage_specific_columns(file_name, bucket_name, column_list, dtype_dict)
+# new_time = time.time()
+# print('Finished Reading in: ', str(new_time - start_time))
+
+# start_time = time.time()
+# df = get_user_eth_wrseth_at_block_number(df, wallet_address, minimum_block_number, maximum_block_number)
+# new_time = time.time()
+# print('Finished Making Blocks in: ', str(new_time - start_time))
+
 # print(df.loc[df['token_address'] == eth_deposit_receipt_address])
