@@ -733,7 +733,7 @@ def get_user_tvl_and_embers(user_address):
     df = df[(df['to_address'].str.contains(user_address)) | (df['from_address'].str.contains(user_address))]
     
     if len(df) > 0:
-        df = df.drop_duplicates(subset=['tx_hash','log_index', 'transaction_index', 'token_address', 'token_volume'], keep='last')
+        df = df.drop_duplicates(subset=['tx_hash','log_index', 'transaction_index', 'token_address'], keep='last')
         df = set_single_user_stats(df, user_address, index)
     #if we have an address with no transactions
     if len(df) < 1:
@@ -924,6 +924,16 @@ def get_users_transactions(user_address):
 
     return response
 
+# # makes a plain jane dictionary resposnse
+def make_df_to_dict_response(df):
+
+    df = df.set_index('user_address')
+    
+    df_dict = df.to_dict(orient='dict')
+
+    return df_dict
+
+
 @app.route("/user_tvl_and_embers/", methods=["POST"])
 def get_api_response():
 
@@ -1063,6 +1073,21 @@ def get_all_kelp_dao_users():
 
     return jsonify(response), 200
 
+# # processes batches of addresses
+@app.route("/get_all_tvl_and_embers/", methods=["GET"])
+def get_all_tvl_and_embers():
+    
+    df = read_from_cloud_storage('snapshot_user_tvl_embers.csv', 'cooldowns2')
+
+    response_dict = {}
+
+    # Threads (optional)
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(make_df_to_dict_response, df)
+        
+    response = future.result()  # Append individual responses
+
+    return jsonify(response), 200
 
 if __name__ =='__main__':
     app.run()
