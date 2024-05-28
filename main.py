@@ -18,7 +18,7 @@ from io import BytesIO
 
 app = Flask(__name__)
 
-PATH = os.path.join(os.getcwd(), 'fast-web-419215-35d284e06546.json')
+PATH = os.path.join(os.getcwd(), 'turtle-api-423200-92c434344f6f.json')
 
 STORAGE_CLIENT = storage.Client(PATH)
 
@@ -726,7 +726,7 @@ def get_user_tvl_and_embers(user_address):
     index = 0
     
     start_time = time.time()
-    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
     print('Finished Reading Data in: ' + str(time.time() - start_time))
 
     user_address = Web3.to_checksum_address(user_address)
@@ -879,7 +879,7 @@ def get_users_transactions(user_address):
     
     data = []
 
-    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
     
     df = df[(df['from_address'] == user_address) | (df['to_address'] == user_address)]
 
@@ -962,7 +962,7 @@ def get_batch_users_tvl_and_embers_response():
     else:
         user_addresses = data
     
-    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
 
     response_dict = {}
     for user_address in user_addresses:
@@ -994,7 +994,7 @@ def get_filler_response():
 @app.route("/get_all_users/", methods=["GET"])
 def get_all_users():
 
-    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
     df = set_unique_users_no_database(df)
     df = df[['to_address', 'log_index']]
 
@@ -1024,7 +1024,7 @@ def get_them_transactions():
 @app.route("/get_wallet_wrseth_eth_supply/", methods=["POST"])
 def get_wrseth_eth_api_response():
 
-    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
 
     data = json.loads(request.data)
 
@@ -1055,7 +1055,7 @@ def get_wrseth_eth_api_response():
 @app.route("/get_all_wrseth_eth_suppliers/", methods=["GET"])
 def get_all_kelp_dao_users():
 
-    df = read_from_cloud_storage('current_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
     df = set_unique_users_no_database(df)
 
     eth_deposit_receipt_address = '0x9c29a8eC901DBec4fFf165cD57D4f9E03D4838f7'
@@ -1077,7 +1077,7 @@ def get_all_kelp_dao_users():
 @app.route("/get_all_tvl_and_embers/", methods=["GET"])
 def get_all_tvl_and_embers():
     
-    df = read_from_cloud_storage('snapshot_user_tvl_embers.csv', 'cooldowns2')
+    df = read_from_cloud_storage('kelp_dao_data.csv', 'kelp_dao')
 
     response_dict = {}
 
